@@ -1,12 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-
-export default function PriceCard({ title, icon, data, type, onToggle, isFlipped }) {
+export default function PriceCard({ title, icon, data, type, onToggle }) {
   return (
     <div className="glass-card p-8 w-full">
       <div className="text-center mb-6">
-        <div className={`flex justify-center mb-4`}>
+        <div className="flex justify-center mb-4">
           <div className={`w-20 h-20 rounded-full bg-gradient-to-r ${type === 'gold' ? 'from-yellow-400 to-yellow-600' : 'from-gray-300 to-gray-500'} flex items-center justify-center shadow-lg`}>
             <span className="text-3xl font-bold">{icon}</span>
           </div>
