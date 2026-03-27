@@ -16,7 +16,7 @@ export default function Home() {
 
   const fetchPrices = async () => {
     try {
-      const response = await fetch('/api/prices')
+      const response = await fetch('/api/price')
       const data = await response.json()
       
       if (data.error) throw new Error(data.error)
