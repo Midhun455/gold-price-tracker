@@ -1,6 +1,11 @@
 'use client'
 
-export default function PriceCard({ title, icon, data, type, onToggle }) {
+export default function PriceCard({ title, icon, data, type, onToggle, change }) {
+  const getChangeColor = () => {
+    if (!change) return 'text-gray-400'
+    return change.direction === 'up' ? 'text-green-400' : change.direction === 'down' ? 'text-red-400' : 'text-gray-400'
+  }
+
   return (
     <div className="glass-card p-8 w-full">
       <div className="text-center mb-6">
@@ -13,13 +18,24 @@ export default function PriceCard({ title, icon, data, type, onToggle }) {
         <p className="text-gray-300 text-sm">
           {type === 'gold' ? '24K · 22K · 18K India Import Landed' : 'XAG/USD · India Import Landed'}
         </p>
+        {data?.source && (
+          <p className="text-xs text-gray-400 mt-1">Source: {data.source}</p>
+        )}
       </div>
 
       <div className="space-y-4">
         <div className="glass p-4 rounded-xl">
           <div className="flex justify-between items-center mb-2">
             <span className="text-gray-300">{type === 'gold' ? 'XAU/USD' : 'XAG/USD'}</span>
-            <span className="text-white font-mono text-xl">${data?.usd || '—'}</span>
+            <div className="text-right">
+              <span className="text-white font-mono text-xl">${data?.usd || '—'}</span>
+              {change && (
+                <p className={`text-xs ${getChangeColor()} mt-1`}>
+                  {change.direction === 'up' ? '▲' : change.direction === 'down' ? '▼' : '•'} 
+                  ${Math.abs(change.change)} ({change.percentage}%)
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-gray-300">USD/INR</span>
@@ -47,7 +63,15 @@ export default function PriceCard({ title, icon, data, type, onToggle }) {
             <>
               <div className="flex justify-between items-center mb-3">
                 <span className="text-gray-300">Silver Price</span>
-                <span className="text-gray-200 font-bold text-2xl">₹{data?.ratePerGram || '—'}</span>
+                <div className="text-right">
+                  <span className="text-gray-200 font-bold text-2xl">₹{data?.ratePerGram || '—'}</span>
+                  {change && (
+                    <p className={`text-xs ${getChangeColor()} mt-1`}>
+                      {change.direction === 'up' ? '▲' : change.direction === 'down' ? '▼' : '•'} 
+                      ₹{Math.abs(change.change)} ({change.percentage}%)
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex justify-between items-center text-sm text-gray-400">
                 <span>per gram</span>
@@ -64,9 +88,9 @@ export default function PriceCard({ title, icon, data, type, onToggle }) {
         </div>
 
         <div className="text-center text-gray-400 text-xs mt-4">
-          <p>📊 Live updates every 2 seconds</p>
+          <p>📊 Live updates every 2 seconds from TradingView</p>
           <p className="mt-1">🔄 Last updated: {data?.lastUpdate || '—'}</p>
-          <p className="mt-2 text-gray-500">*Includes 6% duty + making charges</p>
+          <p className="mt-2 text-gray-500">*Includes 6% duty + making charges + GST</p>
         </div>
       </div>
 
