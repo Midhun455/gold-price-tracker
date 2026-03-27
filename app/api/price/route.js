@@ -1,34 +1,3 @@
-// export async function GET() {
-//   // Simple fallback data that always returns valid JSON
-//   const OZ_TO_GRAM = 31.1035
-//   const usdInr = 86.5
-//   const goldUSD = 2350.50
-//   const silverUSD = 28.75
-  
-//   return new Response(
-//     JSON.stringify({
-//       success: true,
-//       gold: {
-//         usd: goldUSD,
-//         inr: (goldUSD / OZ_TO_GRAM) * usdInr,
-//         usdInr: usdInr
-//       },
-//       silver: {
-//         usd: silverUSD,
-//         inr: (silverUSD / OZ_TO_GRAM) * usdInr,
-//         usdInr: usdInr
-//       },
-//       timestamp: new Date().toISOString()
-//     }),
-//     {
-//       status: 200,
-//       headers: {
-//         'Content-Type': 'application/json',
-//       },
-//     }
-//   )
-// }
-
 import { NextResponse } from 'next/server'
 
 // TradingView scanner endpoint for forex/commodities
@@ -122,8 +91,8 @@ export async function GET() {
     const usdInr = await fetchUSDINR()
     
     // Try TradingView first for both metals
-    let goldUSD = await fetchTradingView("FX_IDC:XAUUSD")
-    let silverUSD = await fetchTradingView("FX_IDC:XAGUSD")
+    let goldUSD = await fetchTradingView("OANDA:XAUUSD")
+    let silverUSD = await fetchTradingView("OANDA:XAGUSD")
     
     // Fallback to Yahoo Finance if TradingView fails
     if (!goldUSD) {
