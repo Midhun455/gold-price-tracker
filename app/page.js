@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import PriceCard from '@/components/PriceCard'
-import { calculateGoldRates, calculateSilverRates } from '@/lib/priceFetcher'
+import PriceCard from '../components/PriceCard'
+import { calculateGoldRates, calculateSilverRates } from '../lib/priceFetcher'
 
 export default function Home() {
   const [prices, setPrices] = useState({
@@ -71,13 +71,12 @@ export default function Home() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-2xl" style={{ perspective: '1000px' }}>
         <div 
-          className={`relative transition-transform duration-700 transform-gpu`}
+          className={`relative transition-transform duration-700`}
           style={{ 
             transformStyle: 'preserve-3d',
             transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
           }}
         >
-          {/* Front */}
           <div style={{ backfaceVisibility: 'hidden' }}>
             <PriceCard
               title="Gold Price Tracker"
@@ -85,11 +84,9 @@ export default function Home() {
               type="gold"
               data={prices.gold}
               onToggle={handleToggle}
-              isFlipped={isFlipped}
             />
           </div>
           
-          {/* Back */}
           <div 
             style={{ 
               backfaceVisibility: 'hidden',
@@ -106,7 +103,6 @@ export default function Home() {
               type="silver"
               data={prices.silver}
               onToggle={handleToggle}
-              isFlipped={isFlipped}
             />
           </div>
         </div>
