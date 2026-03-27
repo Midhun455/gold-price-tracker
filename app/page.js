@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import PriceCard from '../components/PriceCard'
-import { calculateGoldRates, calculateSilverRates } from '../lib/priceFetcher'
+import { calculateGoldRates, calculateSilverRates, getPriceChange } from '../lib/priceFetcher'
 
 export default function Home() {
   const [prices, setPrices] = useState({
-    gold: { usd: null, inr: null, usdInr: null, rates: null, lastUpdate: null },
-    silver: { usd: null, inr: null, usdInr: null, ratePerGram: null, perKg: null, lastUpdate: null }
+    gold: { usd: null, inr: null, usdInr: null, rates: null, lastUpdate: null, source: null },
+    silver: { usd: null, inr: null, usdInr: null, ratePerGram: null, perKg: null, lastUpdate: null, source: null }
   })
+  const [previousPrices, setPreviousPrices] = useState({ gold: null, silver: null })
   const [loading, setLoading] = useState(true)
   const [isFlipped, setIsFlipped] = useState(false)
+  const [error, setError] = useState(null)
 
   const fetchPrices = async () => {
     try {
@@ -18,6 +20,12 @@ export default function Home() {
       const data = await response.json()
       
       if (data.error) throw new Error(data.error)
+      
+      // Store previous prices for change calculation
+      setPreviousPrices({
+        gold: prices.gold.inr,
+        silver: prices.silver.ratePerGram
+      })
       
       const goldRates = calculateGoldRates(data.gold.inr)
       const silverRates = calculateSilverRates(data.silver.inr)
@@ -28,6 +36,7 @@ export default function Home() {
           inr: data.gold.inr.toFixed(2),
           usdInr: data.gold.usdInr.toFixed(2),
           rates: goldRates,
+          source: data.gold.source,
           lastUpdate: new Date().toLocaleTimeString()
         },
         silver: {
@@ -36,13 +45,16 @@ export default function Home() {
           usdInr: data.silver.usdInr.toFixed(2),
           ratePerGram: silverRates.perGram,
           perKg: silverRates.perKg,
+          source: data.silver.source,
           lastUpdate: new Date().toLocaleTimeString()
         }
       })
       
       setLoading(false)
+      setError(null)
     } catch (error) {
       console.error('Error fetching prices:', error)
+      setError('Failed to fetch prices. Using fallback data...')
     }
   }
 
@@ -56,12 +68,15 @@ export default function Home() {
     setIsFlipped(!isFlipped)
   }
 
+  const goldChange = getPriceChange(prices.gold.inr, previousPrices.gold)
+  const silverChange = getPriceChange(prices.silver.ratePerGram, previousPrices.silver)
+
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <div className="glass-card p-8 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
-          <p className="text-white">Fetching live rates...</p>
+          <p className="text-white">Fetching live rates from TradingView...</p>
         </div>
       </main>
     )
@@ -69,6 +84,12 @@ export default function Home() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
+      {error && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 glass p-4 rounded-lg text-yellow-400 z-50">
+          ⚠️ {error}
+        </div>
+      )}
+      
       <div className="w-full max-w-2xl" style={{ perspective: '1000px' }}>
         <div 
           className={`relative transition-transform duration-700`}
@@ -83,6 +104,7 @@ export default function Home() {
               icon="🥇"
               type="gold"
               data={prices.gold}
+              change={goldChange}
               onToggle={handleToggle}
             />
           </div>
@@ -102,6 +124,7 @@ export default function Home() {
               icon="🥈"
               type="silver"
               data={prices.silver}
+              change={silverChange}
               onToggle={handleToggle}
             />
           </div>
