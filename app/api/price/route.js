@@ -1,47 +1,66 @@
-// app/api/price/route.js
 import { NextResponse } from 'next/server';
+
+const OZ_TO_GRAM = 31.1034768;
+
+async function safeJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
 async function fetchTradingView(symbol) {
   try {
-    const res = await fetch("https://scanner.tradingview.com/cfd/scan", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const res = await fetch('https://scanner.tradingview.com/cfd/scan', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0',
+      },
       body: JSON.stringify({
         symbols: {
           tickers: [symbol],
           query: { types: [] },
         },
-        columns: ["close"],
+        columns: ['close'],
         range: [0, 0],
       }),
-      next: { revalidate: 8 },
+      next: { revalidate: 10 },
     });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) return null;
 
-    const data = await res.json();
-
+    const data = await safeJson(res);
     const price = data?.data?.[0]?.d?.[0];
-    return typeof price === 'number' && !isNaN(price) ? price : null;
-  } catch (err) {
-    console.error(`TradingView failed for ${symbol}:`, err.message);
+
+    return typeof price === 'number' && Number.isFinite(price) ? price : null;
+  } catch (error) {
+    console.error(`TradingView failed for ${symbol}:`, error);
     return null;
   }
 }
 
 async function fetchYahooFinance(symbol) {
   try {
-    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/charts/${symbol}`, {
-      next: { revalidate: 15 },
-    });
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+        },
+        next: { revalidate: 15 },
+      }
+    );
 
     if (!res.ok) return null;
 
-    const data = await res.json();
+    const data = await safeJson(res);
     const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    return typeof price === 'number' && !isNaN(price) ? price : null;
-  } catch (err) {
-    console.error(`Yahoo failed for ${symbol}:`, err.message);
+
+    return typeof price === 'number' && Number.isFinite(price) ? price : null;
+  } catch (error) {
+    console.error(`Yahoo failed for ${symbol}:`, error);
     return null;
   }
 }
@@ -52,14 +71,22 @@ async function fetchUSDINR() {
       const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=INR', {
         next: { revalidate: 120 },
       });
-      const data = await res.json();
+      if (!res.ok) return null;
+      const data = await safeJson(res);
       return data?.rates?.INR;
     },
     async () => {
-      const res = await fetch('https://query1.finance.yahoo.com/v8/finance/charts/USDINR=X', {
-        next: { revalidate: 60 },
-      });
-      const data = await res.json();
+      const res = await fetch(
+        'https://query1.finance.yahoo.com/v8/finance/chart/USDINR=X',
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0',
+          },
+          next: { revalidate: 60 },
+        }
+      );
+      if (!res.ok) return null;
+      const data = await safeJson(res);
       return data?.chart?.result?.[0]?.meta?.regularMarketPrice;
     },
   ];
@@ -67,12 +94,14 @@ async function fetchUSDINR() {
   for (const source of sources) {
     try {
       const rate = await source();
-      if (rate && !isNaN(rate) && rate > 80) return rate;
-    } catch (e) {
-      continue;
+      if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+        return rate;
+      }
+    } catch {
+      // try next source
     }
   }
-  console.warn("USD/INR sources failed → using fallback");
+
   return 86.5;
 }
 
@@ -80,25 +109,33 @@ export async function GET() {
   try {
     const usdInr = await fetchUSDINR();
 
-    let goldUSD = await fetchTradingView("TVC:XAUUSD") || 
-                  await fetchTradingView("OANDA:XAUUSD");
+    let goldUSD = null;
+    let silverUSD = null;
+    let goldSource = 'fallback';
+    let silverSource = 'fallback';
 
-    let silverUSD = await fetchTradingView("TVC:XAGUSD") || 
-                    await fetchTradingView("OANDA:XAGUSD");
-
-    // Yahoo fallback
-    if (!goldUSD) {
-      goldUSD = await fetchYahooFinance("GC=F");
+    goldUSD = await fetchTradingView('TVC:XAUUSD');
+    if (!goldUSD) goldUSD = await fetchTradingView('OANDA:XAUUSD');
+    if (goldUSD) {
+      goldSource = 'TradingView';
+    } else {
+      goldUSD = await fetchYahooFinance('GC=F');
+      if (goldUSD) goldSource = 'Yahoo';
     }
-    if (!silverUSD) {
-      silverUSD = await fetchYahooFinance("SI=F");
+
+    silverUSD = await fetchTradingView('TVC:XAGUSD');
+    if (!silverUSD) silverUSD = await fetchTradingView('OANDA:XAGUSD');
+    if (silverUSD) {
+      silverSource = 'TradingView';
+    } else {
+      silverUSD = await fetchYahooFinance('SI=F');
+      if (silverUSD) silverSource = 'Yahoo';
     }
 
-    // Final safe fallbacks (updated 2026 realistic values)
-    const finalGoldUSD = goldUSD && !isNaN(goldUSD) ? goldUSD : 2650;
-    const finalSilverUSD = silverUSD && !isNaN(silverUSD) ? silverUSD : 32.5;
-
-    const OZ_TO_GRAM = 31.1034768;
+    const finalGoldUSD =
+      typeof goldUSD === 'number' && Number.isFinite(goldUSD) ? goldUSD : 2650;
+    const finalSilverUSD =
+      typeof silverUSD === 'number' && Number.isFinite(silverUSD) ? silverUSD : 32.5;
 
     const goldINRPerGram = (finalGoldUSD / OZ_TO_GRAM) * usdInr;
     const silverINRPerGram = (finalSilverUSD / OZ_TO_GRAM) * usdInr;
@@ -109,24 +146,22 @@ export async function GET() {
         usd: Number(finalGoldUSD.toFixed(2)),
         inrPerGram: Number(goldINRPerGram.toFixed(2)),
         usdInr: Number(usdInr.toFixed(2)),
+        source: goldSource,
       },
       silver: {
         usd: Number(finalSilverUSD.toFixed(2)),
         inrPerGram: Number(silverINRPerGram.toFixed(4)),
         usdInr: Number(usdInr.toFixed(2)),
+        source: silverSource,
       },
       timestamp: new Date().toISOString(),
-      source: goldUSD ? "TradingView" : "Fallback",
     });
-
   } catch (error) {
     console.error('API Route Error:', error);
 
-    // Safe fallback response
     const fallbackUsdInr = 86.5;
     const fallbackGold = 2650;
     const fallbackSilver = 32.5;
-    const OZ_TO_GRAM = 31.1034768;
 
     return NextResponse.json({
       success: false,
@@ -134,14 +169,16 @@ export async function GET() {
         usd: fallbackGold,
         inrPerGram: Number(((fallbackGold / OZ_TO_GRAM) * fallbackUsdInr).toFixed(2)),
         usdInr: fallbackUsdInr,
+        source: 'fallback',
       },
       silver: {
         usd: fallbackSilver,
         inrPerGram: Number(((fallbackSilver / OZ_TO_GRAM) * fallbackUsdInr).toFixed(4)),
         usdInr: fallbackUsdInr,
+        source: 'fallback',
       },
       timestamp: new Date().toISOString(),
-      error: "Using fallback data due to external API issues",
+      error: 'Using fallback data due to external API issues',
     });
   }
 }
