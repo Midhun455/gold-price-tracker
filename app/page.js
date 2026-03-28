@@ -1,8 +1,26 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import PriceCard from '../components/PriceCard'
 import { calculateGoldRates, calculateSilverRates, getPriceChange } from '../lib/priceFetcher'
+
+function toFiniteNumber(value) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function formatTimestamp(timestamp) {
+  if (!timestamp) return '--'
+
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return '--'
+
+  return date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
 
 export default function Home() {
   const [prices, setPrices] = useState({
@@ -12,7 +30,7 @@ export default function Home() {
       usdInr: null,
       rates: null,
       lastUpdate: null,
-      source: null
+      source: null,
     },
     silver: {
       usd: null,
@@ -21,46 +39,52 @@ export default function Home() {
       ratePerGram: null,
       perKg: null,
       lastUpdate: null,
-      source: null
-    }
+      source: null,
+    },
   })
-
   const [previousPrices, setPreviousPrices] = useState({ gold: null, silver: null })
   const [loading, setLoading] = useState(true)
   const [isFlipped, setIsFlipped] = useState(false)
   const [error, setError] = useState(null)
+  const [statusMessage, setStatusMessage] = useState(null)
+  const latestPricesRef = useRef({
+    gold: null,
+    silver: null,
+  })
 
   const fetchPrices = async () => {
     try {
       const response = await fetch('/api/price', { cache: 'no-store' })
+      if (!response.ok) {
+        throw new Error(`Price API request failed with status ${response.status}`)
+      }
+
       const data = await response.json()
+      const goldInr = toFiniteNumber(data?.gold?.inrPerGram)
+      const silverInr = toFiniteNumber(data?.silver?.inrPerGram)
+      const goldUsd = toFiniteNumber(data?.gold?.usd)
+      const silverUsd = toFiniteNumber(data?.silver?.usd)
+      const usdInr = toFiniteNumber(data?.gold?.usdInr ?? data?.silver?.usdInr)
 
-      const goldInr = Number(data?.gold?.inr ?? data?.gold?.inrPerGram ?? 0)
-      const silverInr = Number(data?.silver?.inr ?? data?.silver?.inrPerGram ?? 0)
-      const goldUsd = Number(data?.gold?.usd ?? 0)
-      const silverUsd = Number(data?.silver?.usd ?? 0)
-      const usdInr = Number(data?.gold?.usdInr ?? data?.silver?.usdInr ?? 0)
-
-      if (!goldInr || !silverInr) {
+      if (goldInr === null || silverInr === null || goldUsd === null || silverUsd === null || usdInr === null) {
         throw new Error('Invalid price data received from API')
       }
 
       setPreviousPrices({
-        gold: prices.gold.inr ? Number(prices.gold.inr) : null,
-        silver: prices.silver.ratePerGram ? Number(prices.silver.ratePerGram) : null
+        gold: latestPricesRef.current.gold,
+        silver: latestPricesRef.current.silver,
       })
 
       const goldRates = calculateGoldRates(goldInr)
       const silverRates = calculateSilverRates(silverInr)
-
-      setPrices({
+      const nextPrices = {
         gold: {
           usd: goldUsd.toFixed(2),
           inr: goldInr.toFixed(2),
           usdInr: usdInr.toFixed(2),
           rates: goldRates,
           source: data?.gold?.source || 'API',
-          lastUpdate: new Date().toLocaleTimeString()
+          lastUpdate: formatTimestamp(data?.timestamp),
         },
         silver: {
           usd: silverUsd.toFixed(2),
@@ -69,15 +93,22 @@ export default function Home() {
           ratePerGram: Number(silverRates.perGram).toFixed(2),
           perKg: Number(silverRates.perKg).toFixed(2),
           source: data?.silver?.source || 'API',
-          lastUpdate: new Date().toLocaleTimeString()
-        }
-      })
+          lastUpdate: formatTimestamp(data?.timestamp),
+        },
+      }
 
+      latestPricesRef.current = {
+        gold: goldInr,
+        silver: Number(silverRates.perGram),
+      }
+      setPrices(nextPrices)
+      setStatusMessage(data?.status === 'live' ? null : data?.message || 'Showing fallback values.')
       setError(null)
-      setLoading(false)
-    } catch (error) {
-      console.error('Error fetching prices:', error)
-      setError('Failed to fetch prices')
+    } catch (fetchError) {
+      console.error('Error fetching prices:', fetchError)
+      setError('Unable to refresh prices right now. Retrying automatically.')
+      setStatusMessage(null)
+    } finally {
       setLoading(false)
     }
   }
@@ -89,7 +120,7 @@ export default function Home() {
   }, [])
 
   const handleToggle = () => {
-    setIsFlipped(!isFlipped)
+    setIsFlipped((currentValue) => !currentValue)
   }
 
   const goldChange = getPriceChange(prices.gold.inr, previousPrices.gold)
@@ -109,8 +140,14 @@ export default function Home() {
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       {error && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 glass p-4 rounded-lg text-yellow-400 z-50">
+        <div className="fixed top-4 left-1/2 z-50 w-[min(92vw,40rem)] -translate-x-1/2 rounded-lg border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100 backdrop-blur">
           {error}
+        </div>
+      )}
+
+      {statusMessage && !error && (
+        <div className="fixed top-4 left-1/2 z-50 w-[min(92vw,40rem)] -translate-x-1/2 rounded-lg border border-yellow-400/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100 backdrop-blur">
+          {statusMessage}
         </div>
       )}
 
@@ -119,13 +156,13 @@ export default function Home() {
           className="relative transition-transform duration-700"
           style={{
             transformStyle: 'preserve-3d',
-            transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
+            transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
           }}
         >
           <div style={{ backfaceVisibility: 'hidden' }}>
             <PriceCard
               title="Gold Price Tracker"
-              icon="🥇"
+              icon="Au"
               type="gold"
               data={prices.gold}
               change={goldChange}
@@ -140,12 +177,12 @@ export default function Home() {
               position: 'absolute',
               top: 0,
               left: 0,
-              width: '100%'
+              width: '100%',
             }}
           >
             <PriceCard
               title="Silver Price Tracker"
-              icon="🥈"
+              icon="Ag"
               type="silver"
               data={prices.silver}
               change={silverChange}

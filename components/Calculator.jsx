@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from "react";
 
 export default function Calculator({ price }) {
@@ -10,7 +12,7 @@ export default function Calculator({ price }) {
                 onChange={(e) => setG(e.target.value)}
                 className="text-black px-2"
             />
-            <div>Total: ₹ {(g * price).toFixed(2)}</div>
+            <div>Total: Rs. {(g * price).toFixed(2)}</div>
         </div>
     );
 }
