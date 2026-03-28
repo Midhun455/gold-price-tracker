@@ -13,34 +13,60 @@ async function safeJson(res) {
   }
 }
 
-async function fetchTradingView(symbol) {
+async function fetchMetalsDevLatest() {
+  const apiKey = process.env.METALS_DEV_API_KEY
+
+  if (!apiKey) {
+    return {
+      goldUSD: null,
+      silverUSD: null,
+      source: null,
+      error: 'Missing METALS_DEV_API_KEY',
+    }
+  }
+
   try {
-    const res = await fetch('https://scanner.tradingview.com/cfd/scan', {
-      method: 'POST',
+    const url = new URL('https://api.metals.dev/v1/latest')
+    url.searchParams.set('api_key', apiKey)
+    url.searchParams.set('currency', 'USD')
+    url.searchParams.set('unit', 'toz')
+
+    const res = await fetch(url.toString(), {
       headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0',
+        Accept: 'application/json',
       },
-      body: JSON.stringify({
-        symbols: {
-          tickers: [symbol],
-          query: { types: [] },
-        },
-        columns: ['close'],
-        range: [0, 0],
-      }),
-      next: { revalidate: 10 },
+      next: { revalidate: 60 },
     })
 
-    if (!res.ok) return null
+    if (!res.ok) {
+      const body = await res.text()
+      console.error('Metals.dev request failed:', res.status, body)
+      return {
+        goldUSD: null,
+        silverUSD: null,
+        source: null,
+        error: `Metals.dev failed with status ${res.status}`,
+      }
+    }
 
     const data = await safeJson(res)
-    const price = data?.data?.[0]?.d?.[0]
+    const goldUSD = data?.status === 'success' ? data?.metals?.gold : null
+    const silverUSD = data?.status === 'success' ? data?.metals?.silver : null
 
-    return typeof price === 'number' && Number.isFinite(price) ? price : null
+    return {
+      goldUSD: typeof goldUSD === 'number' && Number.isFinite(goldUSD) ? goldUSD : null,
+      silverUSD: typeof silverUSD === 'number' && Number.isFinite(silverUSD) ? silverUSD : null,
+      source: data?.status === 'success' ? 'Metals.dev' : null,
+      error: data?.status === 'success' ? null : 'Metals.dev returned an invalid payload',
+    }
   } catch (error) {
-    console.error(`TradingView failed for ${symbol}:`, error)
-    return null
+    console.error('Metals.dev fetch failed:', error)
+    return {
+      goldUSD: null,
+      silverUSD: null,
+      source: null,
+      error: 'Metals.dev request threw an exception',
+    }
   }
 }
 
@@ -52,7 +78,7 @@ async function fetchYahooFinance(symbol) {
         headers: {
           'User-Agent': 'Mozilla/5.0',
         },
-        next: { revalidate: 15 },
+        next: { revalidate: 60 },
       }
     )
 
@@ -112,25 +138,18 @@ export async function GET() {
   try {
     const usdInr = await fetchUSDINR()
 
-    let goldUSD = null
-    let silverUSD = null
-    let goldSource = 'Fallback'
-    let silverSource = 'Fallback'
+    const metalsDev = await fetchMetalsDevLatest()
+    let goldUSD = metalsDev.goldUSD
+    let silverUSD = metalsDev.silverUSD
+    let goldSource = metalsDev.goldUSD ? 'Metals.dev' : 'Fallback'
+    let silverSource = metalsDev.silverUSD ? 'Metals.dev' : 'Fallback'
 
-    goldUSD = await fetchTradingView('TVC:XAUUSD')
-    if (!goldUSD) goldUSD = await fetchTradingView('OANDA:XAUUSD')
-    if (goldUSD) {
-      goldSource = 'TradingView'
-    } else {
+    if (!goldUSD) {
       goldUSD = await fetchYahooFinance('GC=F')
       if (goldUSD) goldSource = 'Yahoo'
     }
 
-    silverUSD = await fetchTradingView('TVC:XAGUSD')
-    if (!silverUSD) silverUSD = await fetchTradingView('OANDA:XAGUSD')
-    if (silverUSD) {
-      silverSource = 'TradingView'
-    } else {
+    if (!silverUSD) {
       silverUSD = await fetchYahooFinance('SI=F')
       if (silverUSD) silverSource = 'Yahoo'
     }
@@ -152,7 +171,7 @@ export async function GET() {
       status: isFullyLive ? 'live' : 'partial-fallback',
       message: isFullyLive
         ? 'Live market data is available.'
-        : 'Some providers were unavailable, so fallback values were used where needed.',
+        : metalsDev.error || 'Some providers were unavailable, so fallback values were used where needed.',
       gold: {
         usd: Number(finalGoldUSD.toFixed(2)),
         inrPerGram: Number(goldINRPerGram.toFixed(2)),

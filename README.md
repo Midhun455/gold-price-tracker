@@ -15,8 +15,9 @@ Live price tracker for gold and silver in India with import duty calculations.
 
 1. Clone the repository
 2. Install dependencies: `npm install`
-3. Run development server: `npm run dev`
+3. Create `.env.local` with `METALS_DEV_API_KEY=your_key_here`
+4. Run development server: `npm run dev`
 
 ## Deployment
 
-Deploy to Vercel. No API key is required for the current built-in provider chain.
+Deploy to Vercel and add `METALS_DEV_API_KEY` to the project environment variables.
